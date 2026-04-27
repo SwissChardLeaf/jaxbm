@@ -30,6 +30,7 @@ def sample_single_chain(
     burn_in_steps: int,
     n_samples: int,
     steps_per_sample: int = 1,
+    carry_fn = None
 ):
 
     key, x = jax.lax.fori_loop(
@@ -44,11 +45,17 @@ def sample_single_chain(
             lambda i, val: machine.update_state(val[0], val[1], free_units),
             (key, x),
         )
-        return (key, x), x
+        if carry_fn:
+            return (key, x), carry_fn(x)
+        else:
+            return (key, x), x
 
     (key, x), samples = jax.lax.scan(scan_helper, (key, x), length=n_samples)
 
     return samples
 
-def sample_multiple_chains(machine, keys, x0, free_units, burn_in_steps, n_samples, steps_per_sample):
-    return jax.vmap(sample_single_chain, in_axes=(None, 0, 0, None, None, None, None))(machine, keys, x0, free_units, burn_in_steps, n_samples, steps_per_sample)
+def sample_multiple_chains(machine, key, x0, free_units, burn_in_steps, n_samples, steps_per_sample, carry_fn=None):
+    n_chains = x0.shape[0]
+    keys = jax.random.split(key, n_chains)
+    in_axes = (None, 0, 0, None, None, None, None, None)
+    return jax.vmap(sample_single_chain, in_axes=in_axes)(machine, keys, x0, free_units, burn_in_steps, n_samples, steps_per_sample, carry_fn)
