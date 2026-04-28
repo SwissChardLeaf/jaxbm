@@ -55,8 +55,7 @@ class TestPackageMetadata:
         expected = {
             "BoltzmannMachine",
             "RestrictedBoltzmannMachine",
-            "sample_single_chain",
-            "sample_multiple_chains",
+            "sample_chain",
         }
         assert expected.issubset(set(jax_bm.__all__))
 
@@ -84,16 +83,14 @@ class TestPackageReExports:
         import jax_bm
         import jax_bm.sampling as sampling
 
-        assert jax_bm.sample_single_chain is sampling.sample_single_chain
-        assert jax_bm.sample_multiple_chains is sampling.sample_multiple_chains
+        assert jax_bm.sample_chain is sampling.sample_chain
 
     def test_from_import_works(self) -> None:
         # ``from jax_bm import ...`` must work for every name in __all__.
         from jax_bm import (  # noqa: F401
             BoltzmannMachine,
             RestrictedBoltzmannMachine,
-            sample_multiple_chains,
-            sample_single_chain,
+            sample_chain,
         )
 
 
@@ -115,8 +112,7 @@ class TestSubmodules:
 
     def test_sampling_submodule_importable(self) -> None:
         mod = importlib.import_module("jax_bm.sampling")
-        assert hasattr(mod, "sample_single_chain")
-        assert hasattr(mod, "sample_multiple_chains")
+        assert hasattr(mod, "sample_chain")
 
     def test_statistics_submodule_importable(self) -> None:
         mod = importlib.import_module("jax_bm.statistics")
@@ -155,24 +151,13 @@ class TestPublicApiSmoke:
         assert isinstance(rbm, jax_bm.RestrictedBoltzmannMachine)
         assert rbm.W.shape == (3, 2)
 
-    def test_sample_single_chain_through_top_level(self) -> None:
+    def test_sample_chain_through_top_level(self) -> None:
         import jax_bm
 
         key = jax.random.PRNGKey(0)
         bm = jax_bm.BoltzmannMachine.init_random(key, n=4)
-        out = jax_bm.sample_single_chain(
+        out = jax_bm.sample_chain(
             bm, key, jnp.ones(4), jnp.arange(4),
             burn_in_steps=2, n_samples=3,
         )
         assert out.shape == (3, 4)
-
-    def test_sample_multiple_chains_through_top_level(self) -> None:
-        import jax_bm
-
-        key = jax.random.PRNGKey(0)
-        bm = jax_bm.BoltzmannMachine.init_random(key, n=4)
-        out = jax_bm.sample_multiple_chains(
-            bm, key, jnp.ones((2, 4)), jnp.arange(4),
-            burn_in_steps=1, n_samples=3, steps_per_sample=1,
-        )
-        assert out.shape == (2, 3, 4)

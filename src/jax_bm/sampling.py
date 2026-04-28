@@ -18,11 +18,11 @@ This module exposes both:
 from __future__ import annotations
 
 import jax
+import jax.numpy as jnp
 
 from .bm import BoltzmannMachine
 
-
-def sample_single_chain(
+def sample_chain(
     machine: BoltzmannMachine,
     key,
     x0: jax.Array,
@@ -30,14 +30,15 @@ def sample_single_chain(
     burn_in_steps: int,
     n_samples: int,
     steps_per_sample: int = 1,
-    carry_fn = None
+    corr = False,
+    avg = False
 ):
 
     key, x = jax.lax.fori_loop(
         0, burn_in_steps, lambda i, val: machine.update_state(val[0], val[1], free_units), (key, x0)
     )
 
-    def scan_helper(val, _):
+    def helper(val, _):
         key, x = val
         key, x = jax.lax.fori_loop(
             0,
@@ -45,17 +46,26 @@ def sample_single_chain(
             lambda i, val: machine.update_state(val[0], val[1], free_units),
             (key, x),
         )
-        if carry_fn:
-            return (key, x), carry_fn(x)
+        if corr:
+            return (key, x), jnp.outer(x, x)
         else:
             return (key, x), x
 
-    (key, x), samples = jax.lax.scan(scan_helper, (key, x), length=n_samples)
+    def avg_helper(_, val):
+        key, x, running_sum = val
+        key, x = jax.lax.fori_loop(
+            0,
+            steps_per_sample,
+            lambda i, val: machine.update_state(val[0], val[1], free_units),
+            (key, x),
+        )
 
-    return samples
+        return (key, x, running_sum + x)
+        
 
-def sample_multiple_chains(machine, key, x0, free_units, burn_in_steps, n_samples, steps_per_sample, carry_fn=None):
-    n_chains = x0.shape[0]
-    keys = jax.random.split(key, n_chains)
-    in_axes = (None, 0, 0, None, None, None, None, None)
-    return jax.vmap(sample_single_chain, in_axes=in_axes)(machine, keys, x0, free_units, burn_in_steps, n_samples, steps_per_sample, carry_fn)
+    if avg:
+        (key, x, running_sum) = jax.lax.fori_loop(0, n_samples, avg_helper, (key, x, jnp.zeros_like(x)))
+        return running_sum / n_samples
+    else:
+        (key, x), samples = jax.lax.scan(helper, (key, x), length=n_samples)
+        return samples
