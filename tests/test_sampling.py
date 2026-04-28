@@ -184,44 +184,63 @@ class TestSampleChainNoBias:
 
 
 # =========================================================================== #
-# corr=True: emit outer products xx^T per sample                              #
+# corr=True (avg=False): emit (outer-product, state) per sample               #
 # =========================================================================== #
 
 
 class TestSampleChainCorr:
-    def test_output_shape(self, key: jax.Array) -> None:
+    """``corr=True`` (with ``avg=False``) emits two stacked arrays per call:
+    the outer products ``x_t x_t^T`` and the underlying states ``x_t``."""
+
+    def test_output_is_tuple_of_outers_and_states(self, key: jax.Array) -> None:
         bm = BoltzmannMachine.init_random(key, n=5)
         out = sample_chain(
             bm, key, jnp.ones(5), jnp.arange(5),
             burn_in_steps=2, n_samples=7, steps_per_sample=1, corr=True,
         )
-        assert out.shape == (7, 5, 5)
+        assert isinstance(out, tuple)
+        assert len(out) == 2
+        outers, states = out
+        assert outers.shape == (7, 5, 5)
+        assert states.shape == (7, 5)
 
-    def test_matches_outer_products_of_default_run(self, key: jax.Array) -> None:
-        # Same key/init/params: the corr=True output must equal the outer
-        # products of the corr=False trajectory pointwise.
+    def test_states_match_default_trajectory(self, key: jax.Array) -> None:
+        # The state trajectory emitted under ``corr=True`` must be identical
+        # to the trajectory under ``corr=False`` for the same key/init/params.
         bm = BoltzmannMachine.init_random(key, n=4)
         x0 = jnp.ones(4)
         free = jnp.arange(4)
-        states = sample_chain(bm, key, x0, free, 3, 6, 1, corr=False)
-        corrs = sample_chain(bm, key, x0, free, 3, 6, 1, corr=True)
-        expected = np.einsum("ti,tj->tij", np.asarray(states), np.asarray(states))
-        np.testing.assert_array_equal(np.asarray(corrs), expected)
+        default_states = sample_chain(bm, key, x0, free, 3, 6, 1, corr=False)
+        _, corr_states = sample_chain(bm, key, x0, free, 3, 6, 1, corr=True)
+        np.testing.assert_array_equal(
+            np.asarray(corr_states), np.asarray(default_states),
+        )
 
-    def test_corr_outputs_are_symmetric(self, key: jax.Array) -> None:
-        # x x^T is by definition symmetric.
+    def test_outers_are_outer_products_of_states(self, key: jax.Array) -> None:
+        # outers[t] must equal outer(states[t], states[t]) entry-by-entry.
         bm = BoltzmannMachine.init_random(key, n=4)
-        out = sample_chain(
+        outers, states = sample_chain(
+            bm, key, jnp.ones(4), jnp.arange(4), 3, 6, 1, corr=True,
+        )
+        expected = np.einsum("ti,tj->tij", np.asarray(states), np.asarray(states))
+        np.testing.assert_array_equal(np.asarray(outers), expected)
+
+    def test_outers_are_symmetric(self, key: jax.Array) -> None:
+        # x x^T is by definition symmetric in its trailing two axes.
+        bm = BoltzmannMachine.init_random(key, n=4)
+        outers, _ = sample_chain(
             bm, key, jnp.ones(4), jnp.arange(4), 0, 5, 1, corr=True,
         )
-        out_np = np.asarray(out)
-        np.testing.assert_array_equal(out_np, np.swapaxes(out_np, -1, -2))
+        outers_np = np.asarray(outers)
+        np.testing.assert_array_equal(outers_np, np.swapaxes(outers_np, -1, -2))
 
-    def test_diagonal_in_spin_mode_is_one(self, key: jax.Array) -> None:
+    def test_outers_diagonal_in_spin_mode_is_one(self, key: jax.Array) -> None:
         # In spin mode every entry is +/-1, so x_i^2 == 1 for all i.
         bm = BoltzmannMachine.init_random(key, n=4, spin_style=True)
-        out = sample_chain(bm, key, jnp.ones(4), jnp.arange(4), 0, 8, 1, corr=True)
-        diag = np.diagonal(np.asarray(out), axis1=1, axis2=2)
+        outers, _ = sample_chain(
+            bm, key, jnp.ones(4), jnp.arange(4), 0, 8, 1, corr=True,
+        )
+        diag = np.diagonal(np.asarray(outers), axis1=1, axis2=2)
         np.testing.assert_array_equal(diag, np.ones_like(diag))
 
     def test_jit(self, key: jax.Array) -> None:
@@ -232,8 +251,9 @@ class TestSampleChainCorr:
                 burn_in_steps=2, n_samples=3, steps_per_sample=1, corr=True,
             )
         )
-        out = f(bm, key, jnp.ones(4), jnp.arange(4))
-        assert out.shape == (3, 4, 4)
+        outers, states = f(bm, key, jnp.ones(4), jnp.arange(4))
+        assert outers.shape == (3, 4, 4)
+        assert states.shape == (3, 4)
 
 
 # =========================================================================== #
@@ -302,6 +322,93 @@ class TestSampleChainAvg:
             bm, key, jnp.zeros(4), jnp.arange(4), 5, 10, 1, avg=True,
         )
         assert out.shape == (4,)
+
+
+# =========================================================================== #
+# corr=True, avg=True: return (mean of outer products, mean of states)        #
+# =========================================================================== #
+
+
+class TestSampleChainCorrAvg:
+    """The combined ``corr=True, avg=True`` mode does not stack samples;
+    it returns the running means of both the outer-product and the state
+    sequences as a tuple ``(mean_outer, mean_state)``."""
+
+    def test_output_is_tuple_of_means(self, key: jax.Array) -> None:
+        bm = BoltzmannMachine.init_random(key, n=5)
+        out = sample_chain(
+            bm, key, jnp.ones(5), jnp.arange(5),
+            burn_in_steps=2, n_samples=8, steps_per_sample=1,
+            corr=True, avg=True,
+        )
+        assert isinstance(out, tuple)
+        assert len(out) == 2
+        outer_mean, x_mean = out
+        assert outer_mean.shape == (5, 5)
+        assert x_mean.shape == (5,)
+
+    def test_means_match_means_of_corr_only_run(self, key: jax.Array) -> None:
+        # Same key/init/params: corr=True+avg=True must equal the pointwise
+        # means of the corr=True+avg=False stacks.
+        bm = BoltzmannMachine.init_random(key, n=4)
+        x0 = jnp.ones(4)
+        free = jnp.arange(4)
+        outers, states = sample_chain(
+            bm, key, x0, free, 3, 8, 1, corr=True, avg=False,
+        )
+        outer_mean, x_mean = sample_chain(
+            bm, key, x0, free, 3, 8, 1, corr=True, avg=True,
+        )
+        np.testing.assert_allclose(
+            np.asarray(outer_mean), np.asarray(jnp.mean(outers, axis=0)),
+            rtol=1e-6, atol=1e-6,
+        )
+        np.testing.assert_allclose(
+            np.asarray(x_mean), np.asarray(jnp.mean(states, axis=0)),
+            rtol=1e-6, atol=1e-6,
+        )
+
+    def test_x_mean_matches_avg_only_run(self, key: jax.Array) -> None:
+        # The state mean returned in corr+avg mode must agree with the
+        # avg-only mode (corr=False, avg=True): both advance the chain
+        # through the same fori_loops with the same key.
+        bm = BoltzmannMachine.init_random(key, n=4)
+        x0 = jnp.ones(4)
+        free = jnp.arange(4)
+        avg_only = sample_chain(bm, key, x0, free, 3, 8, 1, corr=False, avg=True)
+        _, x_mean = sample_chain(bm, key, x0, free, 3, 8, 1, corr=True, avg=True)
+        np.testing.assert_array_equal(np.asarray(x_mean), np.asarray(avg_only))
+
+    def test_outer_mean_is_symmetric(self, key: jax.Array) -> None:
+        bm = BoltzmannMachine.init_random(key, n=4)
+        outer_mean, _ = sample_chain(
+            bm, key, jnp.ones(4), jnp.arange(4), 0, 5, 1, corr=True, avg=True,
+        )
+        outer_mean_np = np.asarray(outer_mean)
+        np.testing.assert_allclose(outer_mean_np, outer_mean_np.T, rtol=1e-6, atol=1e-6)
+
+    def test_outer_mean_diagonal_in_spin_mode_is_one(self, key: jax.Array) -> None:
+        # In spin mode every emitted state has x_i^2 == 1, so the diagonal
+        # of the running mean of outer products must be exactly 1.
+        bm = BoltzmannMachine.init_random(key, n=4, spin_style=True)
+        outer_mean, _ = sample_chain(
+            bm, key, jnp.ones(4), jnp.arange(4), 0, 12, 1, corr=True, avg=True,
+        )
+        diag = np.diagonal(np.asarray(outer_mean))
+        np.testing.assert_allclose(diag, np.ones_like(diag), rtol=1e-6, atol=1e-6)
+
+    def test_jit(self, key: jax.Array) -> None:
+        bm = BoltzmannMachine.init_random(key, n=4)
+        f = jax.jit(
+            partial(
+                sample_chain,
+                burn_in_steps=2, n_samples=10, steps_per_sample=1,
+                corr=True, avg=True,
+            )
+        )
+        outer_mean, x_mean = f(bm, key, jnp.ones(4), jnp.arange(4))
+        assert outer_mean.shape == (4, 4)
+        assert x_mean.shape == (4,)
 
 
 # =========================================================================== #
