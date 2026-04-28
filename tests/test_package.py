@@ -156,8 +156,9 @@ class TestPublicApiSmoke:
 
         key = jax.random.PRNGKey(0)
         bm = jax_bm.BoltzmannMachine.init_random(key, n=4)
-        out = jax_bm.sample_chain(
+        final_x, samples = jax_bm.sample_chain(
             bm, key, jnp.ones(4), jnp.arange(4),
             burn_in_steps=2, n_samples=3,
         )
-        assert out.shape == (3, 4)
+        assert final_x.shape == (4,)
+        assert samples.shape == (3, 4)

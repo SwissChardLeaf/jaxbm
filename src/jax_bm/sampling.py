@@ -68,7 +68,7 @@ def sample_chain(
     if avg:
         init_running_sum = (jnp.zeros_like(jnp.outer(x, x)), jnp.zeros_like(x)) if corr else jnp.zeros_like(x)
         (key, x, running_sum) = jax.lax.fori_loop(0, n_samples, avg_helper, (key, x, init_running_sum))
-        return jax.tree.map(lambda v: v / n_samples, running_sum)
+        return (x,) + tuple(v / n_samples for v in jax.tree.leaves(running_sum))
     else:
         (key, x), samples = jax.lax.scan(helper, (key, x), length=n_samples)
-        return samples
+        return x, samples
