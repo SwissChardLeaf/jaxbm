@@ -5,15 +5,6 @@ JAX-based simulations of Boltzmann machines.
 `jax-bm` aims to provide simple, composable, and `jit`-friendly building blocks
 for simulating and training Boltzmann machines on top of JAX.
 
-The only model is the fully-connected Boltzmann machine (symmetric couplings,
-zero diagonal). Restricted Boltzmann machines are not a separate model class —
-they are recovered as a fully-connected BM whose couplings have bipartite
-block structure, together with the block-Gibbs sampler in `jax_bm.sampling`.
-
-## Status
-
-Early scaffolding. APIs are unstable.
-
 ## Installation
 
 From a clone of this repository:
@@ -24,23 +15,43 @@ pip install -e ".[dev]"
 
 ## Quick start
 
+`sample_chain` is an array-in/array-out entry point: give it a symmetric
+coupling matrix `W` and a bias vector `b`, and it infers everything else
+(whether the machine is restricted, which conditional sampler to use, etc.)
+from their shape and structure.
+
 ```python
 import jax
-from jax_bm.models import BoltzmannMachine
+import jax.numpy as jnp
+from jax_bm import sample_chain
 
 key = jax.random.PRNGKey(0)
-bm = BoltzmannMachine.init(key, n=64)
+n = 4
+W = jnp.zeros((n, n))   # symmetric (n, n) coupling matrix, zero diagonal
+b = jnp.zeros(n)        # bias vector, or None for no bias
+
+x0 = jnp.ones(n)
+final_x, samples = sample_chain(key, x0, W, b, steps=1, n_samples=100)
 ```
+
+See `sample_chain`'s docstring (`src/jax_bm/sample.py`) for the full set of
+behaviors, including burn-in-only calls (`n_samples=None`), running averages
+(`avg=True`), and correlation matrices (`corr=True`).
 
 ## Project layout
 
 ```
 src/jax_bm/
   __init__.py
-  models/        # fully-connected BoltzmannMachine
-  sampling.py    # single-site Gibbs and bipartite block-Gibbs (RBM-style)
-  training.py    # CD-k, PCD, and related training loops
-  utils.py       # misc helpers (e.g. sigmoid, Bernoulli sampling)
+  sample.py      # sample_chain(): the public entry point, validation, and
+                 # restricted (bipartite) detection
+  _sampler.py    # conditional sampler builders (single-site Gibbs / block-Gibbs)
+  _scan.py       # jax.lax.scan-based driver (stacks a trajectory)
+  _for_loop.py   # jax.lax.fori_loop-based driver (burn-in / running average)
+archive/         # older helpers (statistics, plotting, misc utils), kept for
+                 # reference but not part of the installable package
+examples/        # worked examples (e.g. MNIST wake-sleep training), not part
+                 # of the installable package
 tests/           # pytest-based unit tests
 ```
 

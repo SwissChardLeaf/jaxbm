@@ -4,11 +4,13 @@ These exercise everything that a user gets from ``import jax_bm``:
 
 - the bare import succeeds and exposes ``__version__`` / ``__all__``,
 - every name in ``__all__`` is reachable as an attribute of the package,
-- the re-exported symbols are the *same* objects as their source-of-truth
-  definitions in the submodules,
-- the submodules themselves are importable, and
-- the re-exported public API actually works through the top-level
-  namespace (smoke test).
+- the re-exported symbol is the *same* object as its source-of-truth
+  definition in ``jax_bm.sample``, and
+- the re-exported public API actually works through the top-level namespace
+  (smoke test).
+
+As of this writing the only top-level export is ``sample_chain`` (see
+``jax_bm/sample.py``).
 """
 
 from __future__ import annotations
@@ -52,11 +54,7 @@ class TestPackageMetadata:
         # name is removed; new names are fine.
         import jax_bm
 
-        expected = {
-            "BoltzmannMachine",
-            "RestrictedBoltzmannMachine",
-            "sample_chain",
-        }
+        expected = {"sample_chain"}
         assert expected.issubset(set(jax_bm.__all__))
 
 
@@ -72,26 +70,15 @@ class TestPackageReExports:
         missing = [name for name in jax_bm.__all__ if not hasattr(jax_bm, name)]
         assert missing == [], f"names listed in __all__ but missing from module: {missing}"
 
-    def test_classes_are_same_object_as_in_bm_module(self) -> None:
+    def test_sample_chain_is_same_object_as_in_sample_module(self) -> None:
         import jax_bm
-        import jax_bm.bm as bm
+        import jax_bm.sample as sample_module
 
-        assert jax_bm.BoltzmannMachine is bm.BoltzmannMachine
-        assert jax_bm.RestrictedBoltzmannMachine is bm.RestrictedBoltzmannMachine
-
-    def test_samplers_are_same_object_as_in_sampling_module(self) -> None:
-        import jax_bm
-        import jax_bm.sampling as sampling
-
-        assert jax_bm.sample_chain is sampling.sample_chain
+        assert jax_bm.sample_chain is sample_module.sample_chain
 
     def test_from_import_works(self) -> None:
         # ``from jax_bm import ...`` must work for every name in __all__.
-        from jax_bm import (  # noqa: F401
-            BoltzmannMachine,
-            RestrictedBoltzmannMachine,
-            sample_chain,
-        )
+        from jax_bm import sample_chain  # noqa: F401
 
 
 # =========================================================================== #
@@ -104,26 +91,19 @@ class TestSubmodules:
     to go through the top-level package), and importing a submodule should not
     have surprising side effects."""
 
-    def test_bm_submodule_importable(self) -> None:
-        mod = importlib.import_module("jax_bm.bm")
-        assert hasattr(mod, "BoltzmannMachine")
-        assert hasattr(mod, "RestrictedBoltzmannMachine")
-        assert hasattr(mod, "AbstractBoltzmannMachine")
-
-    def test_sampling_submodule_importable(self) -> None:
-        mod = importlib.import_module("jax_bm.sampling")
+    def test_sample_submodule_importable(self) -> None:
+        mod = importlib.import_module("jax_bm.sample")
         assert hasattr(mod, "sample_chain")
 
-    def test_statistics_submodule_importable(self) -> None:
-        mod = importlib.import_module("jax_bm.statistics")
-        assert hasattr(mod, "compute_rhat")
-        assert hasattr(mod, "compute_ess")
+    def test_sampler_submodule_importable(self) -> None:
+        mod = importlib.import_module("jax_bm._sampler")
+        assert hasattr(mod, "_BM_sampler")
+        assert hasattr(mod, "_RBM_sampler")
 
-    def test_utils_submodule_importable(self) -> None:
-        mod = importlib.import_module("jax_bm.utils")
-        # ``utils`` should expose at least the basic helpers.
-        assert hasattr(mod, "sigmoid")
-        assert hasattr(mod, "logit")
+    def test_loop_submodule_importable(self) -> None:
+        mod = importlib.import_module("jax_bm._loop")
+        assert hasattr(mod, "_scan")
+        assert hasattr(mod, "_for_loop")
 
 
 # =========================================================================== #
@@ -132,33 +112,18 @@ class TestSubmodules:
 
 
 class TestPublicApiSmoke:
-    """End-to-end exercise of the symbols re-exported at the top level. If
-    any of these break, ``import jax_bm; jax_bm.xxx(...)`` is also broken."""
-
-    def test_construct_boltzmann_machine_from_top_level(self) -> None:
-        import jax_bm
-
-        bm = jax_bm.BoltzmannMachine.init_random(jax.random.PRNGKey(0), n=4)
-        assert isinstance(bm, jax_bm.BoltzmannMachine)
-        assert bm.W.shape == (4, 4)
-
-    def test_construct_rbm_from_top_level(self) -> None:
-        import jax_bm
-
-        rbm = jax_bm.RestrictedBoltzmannMachine.init_random(
-            jax.random.PRNGKey(0), n_visible=3, n_hidden=2,
-        )
-        assert isinstance(rbm, jax_bm.RestrictedBoltzmannMachine)
-        assert rbm.W.shape == (3, 2)
+    """End-to-end exercise of the symbol re-exported at the top level. If
+    this breaks, ``import jax_bm; jax_bm.sample_chain(...)`` is also broken."""
 
     def test_sample_chain_through_top_level(self) -> None:
         import jax_bm
 
         key = jax.random.PRNGKey(0)
-        bm = jax_bm.BoltzmannMachine.init_random(key, n=4)
+        n = 4
+        W = jnp.zeros((n, n))
+        b = jnp.zeros(n)
         final_x, samples = jax_bm.sample_chain(
-            bm, key, jnp.ones(4), jnp.arange(4),
-            burn_in_steps=2, n_samples=3,
+            key, jnp.ones(n), W, b, steps=2, n_samples=3,
         )
-        assert final_x.shape == (4,)
-        assert samples.shape == (3, 4)
+        assert final_x.shape == (n,)
+        assert samples.shape == (3, n)
