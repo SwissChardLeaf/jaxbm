@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the jax_bm test suite."""
+"""Shared pytest fixtures for the jaxbm test suite."""
 
 from __future__ import annotations
 

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "jax-bm"
+name = "jaxbm"
 version = "0.0.1"
 description = "JAX-based simulations of Boltzmann machines."
 readme = "README.md"
@@ -44,7 +44,7 @@ Homepage = "https://github.com/inhoolee/jax-bm"
 Issues = "https://github.com/inhoolee/jax-bm/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/jax_bm"]
+packages = ["jaxbm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

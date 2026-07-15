@@ -1,9 +1,10 @@
-"""Tests for :mod:`jax_bm.sample` (the ``BM_chain`` array-in entry point).
+"""Tests for :mod:`jaxbm.sample` (the ``BM_chain`` / ``RBM_chain`` array-in
+entry points, and their ``_bm_validate`` / ``_rbm_validate`` helpers).
 
-``BM_chain`` always returns the final state ``x`` first; what else comes
-back depends on ``mode`` (and the ``n_samples`` it requires) -- see its
-docstring for the full table. The shared ``key`` fixture is provided by
-``tests/conftest.py``.
+``BM_chain`` / ``RBM_chain`` always return the final state first; what else
+comes back depends on ``mode`` (and the ``n_samples`` it requires) -- see
+their docstrings for the full table. The shared ``key`` fixture is provided
+by ``tests/conftest.py``.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import numpy as np
 import pytest
 from jax.experimental import checkify
 
-from jax_bm.sample import (
+from jaxbm.sample import (
     BM_chain,
     RBM_chain,
     _bm_validate,
@@ -129,13 +130,13 @@ class TestBMValidate:
 
     def test_bm_chain_propagates_validation_error(self, key: jax.Array) -> None:
         with pytest.raises(ValueError):
-            BM_chain(key, jnp.ones(2), jnp.ones((2, 3)), jnp.zeros(2), steps=1)
+            BM_chain(key, jnp.ones(2), jnp.ones((2, 3)), jnp.zeros(2), n_samples=None, steps=1)
 
     def test_bm_chain_propagates_state_validation_error(self, key: jax.Array) -> None:
         n = 4
         W = _random_symmetric_weights(key, n)
         with pytest.raises(ValueError):
-            BM_chain(key, jnp.zeros(n), W, jnp.zeros(n), steps=1)
+            BM_chain(key, jnp.zeros(n), W, jnp.zeros(n), n_samples=None, steps=1)
 
 
 class TestRBMValidate:
@@ -145,12 +146,12 @@ class TestRBMValidate:
 
     def test_b_v_size_mismatch_raises(self) -> None:
         W = jnp.zeros((3, 2))
-        with pytest.raises(ValueError, match="b_v"):
+        with pytest.raises(ValueError, match="bias_v"):
             _rbm_validate(jnp.ones(3), jnp.ones(2), W, jnp.zeros(4), None, spin=True, clamp=None)
 
     def test_b_h_size_mismatch_raises(self) -> None:
         W = jnp.zeros((3, 2))
-        with pytest.raises(ValueError, match="b_h"):
+        with pytest.raises(ValueError, match="bias_h"):
             _rbm_validate(jnp.ones(3), jnp.ones(2), W, None, jnp.zeros(5), spin=True, clamp=None)
 
     def test_none_biases_are_allowed(self) -> None:
@@ -252,19 +253,21 @@ class TestModeValidation:
         with pytest.raises(ValueError, match="mode"):
             BM_chain(key, jnp.ones(n), W, b, steps=1, n_samples=5, mode="BOGUS")
 
-    def test_given_n_samples_requires_mode(self, key: jax.Array) -> None:
+    def test_given_n_samples_without_mode_defaults_to_hist(self, key: jax.Array) -> None:
         n = 4
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
-        with pytest.raises(ValueError, match="mode"):
-            BM_chain(key, jnp.ones(n), W, b, steps=1, n_samples=5)
+        default_x, default_xs = BM_chain(key, jnp.ones(n), W, b, steps=1, n_samples=5)
+        hist_x, hist_xs = BM_chain(key, jnp.ones(n), W, b, steps=1, n_samples=5, mode="HIST")
+        np.testing.assert_array_equal(np.asarray(default_x), np.asarray(hist_x))
+        np.testing.assert_array_equal(np.asarray(default_xs), np.asarray(hist_xs))
 
     def test_no_n_samples_forbids_mode(self, key: jax.Array) -> None:
         n = 4
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
         with pytest.raises(ValueError, match="mode"):
-            BM_chain(key, jnp.ones(n), W, b, steps=1, mode="HIST")
+            BM_chain(key, jnp.ones(n), W, b, n_samples=None, steps=1, mode="HIST")
 
     def test_rejects_zero_n_samples(self, key: jax.Array) -> None:
         n = 4
@@ -292,21 +295,27 @@ class TestModeValidation:
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
         with pytest.raises(ValueError, match="integer"):
-            BM_chain(key, jnp.ones(n), W, b, steps=1, clamp=jnp.array([0.0]))
+            BM_chain(key, jnp.ones(n), W, b, n_samples=None, steps=1, clamp=jnp.array([0.0]))
 
     def test_clamp_rejects_out_of_range_index(self, key: jax.Array) -> None:
         n = 4
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
         with pytest.raises(ValueError, match=r"\[0, 4\)"):
-            BM_chain(key, jnp.ones(n), W, b, steps=1, clamp=jnp.array([4], dtype=jnp.int32))
+            BM_chain(
+                key, jnp.ones(n), W, b, n_samples=None, steps=1,
+                clamp=jnp.array([4], dtype=jnp.int32),
+            )
 
     def test_clamp_rejects_duplicate_indices(self, key: jax.Array) -> None:
         n = 4
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
         with pytest.raises(ValueError, match="duplicate"):
-            BM_chain(key, jnp.ones(n), W, b, steps=1, clamp=jnp.array([1, 1], dtype=jnp.int32))
+            BM_chain(
+                key, jnp.ones(n), W, b, n_samples=None, steps=1,
+                clamp=jnp.array([1, 1], dtype=jnp.int32),
+            )
 
 
 # =========================================================================== #
@@ -319,7 +328,7 @@ class TestBMChainLast:
         n = 5
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
-        x = BM_chain(key, jnp.ones(n), W, b, steps=10)
+        x = BM_chain(key, jnp.ones(n), W, b, n_samples=None, steps=10)
         assert x.shape == (n,)
 
     def test_zero_steps_is_identity(self, key: jax.Array) -> None:
@@ -327,13 +336,13 @@ class TestBMChainLast:
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
         x0 = jnp.ones(n)
-        x = BM_chain(key, x0, W, b, steps=0)
+        x = BM_chain(key, x0, W, b, n_samples=None, steps=0)
         np.testing.assert_array_equal(np.asarray(x), np.asarray(x0))
 
     def test_no_bias_runs(self, key: jax.Array) -> None:
         n = 4
         W = _random_symmetric_weights(key, n)
-        x = BM_chain(key, jnp.ones(n), W, None, steps=5)
+        x = BM_chain(key, jnp.ones(n), W, None, n_samples=None, steps=5)
         assert x.shape == (n,)
 
 
@@ -374,7 +383,7 @@ class TestBMChainClamp:
         b = jnp.zeros(n)
         x0 = jnp.ones(n)
         clamp = jnp.arange(n, dtype=jnp.int32)
-        x = BM_chain(key, x0, W, b, steps=10, clamp=clamp)
+        x = BM_chain(key, x0, W, b, n_samples=None, steps=10, clamp=clamp)
         np.testing.assert_array_equal(np.asarray(x), np.asarray(x0))
 
 
@@ -483,7 +492,7 @@ class TestBMChainSpinFalse:
         W = _random_symmetric_weights(key, n)
         b = jnp.zeros(n)
         with pytest.raises(ValueError):
-            BM_chain(key, -jnp.ones(n), W, b, steps=1, spin=False)
+            BM_chain(key, -jnp.ones(n), W, b, n_samples=None, steps=1, spin=False)
 
     def test_outputs_are_binary(self, key: jax.Array) -> None:
         n = 6
@@ -501,7 +510,7 @@ class TestBMChainSpinFalse:
         W = jnp.zeros((n, n))
         b = 5.0 * jnp.ones(n)
         key = jax.random.PRNGKey(0)
-        x0 = BM_chain(key, jnp.zeros(n), W, b, steps=50, spin=False)
+        x0 = BM_chain(key, jnp.zeros(n), W, b, n_samples=None, steps=50, spin=False)
         _, x_mean = BM_chain(
             key, x0, W, b, steps=1, n_samples=200, mode="MEAN", spin=False,
         )
@@ -629,7 +638,7 @@ class TestBMChainStatistics:
         W = jnp.zeros((n, n))
         b = 5.0 * jnp.ones(n)
         key = jax.random.PRNGKey(0)
-        x0 = BM_chain(key, -jnp.ones(n), W, b, steps=50)
+        x0 = BM_chain(key, -jnp.ones(n), W, b, n_samples=None, steps=50)
         _, samples = BM_chain(key, x0, W, b, steps=1, n_samples=200, mode="HIST")
         empirical_mean = np.asarray(jnp.mean(samples, axis=0))
         assert np.all(empirical_mean > 0.9)
@@ -639,7 +648,414 @@ class TestBMChainStatistics:
         W = jnp.zeros((n, n))
         b = -5.0 * jnp.ones(n)
         key = jax.random.PRNGKey(0)
-        x0 = BM_chain(key, jnp.ones(n), W, b, steps=50)
+        x0 = BM_chain(key, jnp.ones(n), W, b, n_samples=None, steps=50)
         _, samples = BM_chain(key, x0, W, b, steps=1, n_samples=200, mode="HIST")
         empirical_mean = np.asarray(jnp.mean(samples, axis=0))
         assert np.all(empirical_mean < -0.9)
+
+
+# =========================================================================== #
+# jit / vmap compatibility (in_jit=True)                                     #
+# =========================================================================== #
+
+# ``steps``, ``n_samples``, ``mode``, and ``spin`` all control Python-level
+# branching inside ``BM_chain`` / ``RBM_chain`` (or downstream in
+# ``_sampler.py`` / ``_loop.py``), so they must be static under ``jit``.
+# ``in_jit`` is a plain Python bool used the same way, so it must be static
+# too. ``weights``/``bias``/``clamp``/``x`` stay dynamic -- ``clamp``'s
+# "is it None" / "how many indices" branching only ever depends on its
+# *shape*, which is static even for a traced array, so it needs no special
+# treatment.
+_STATIC_ARGNAMES = ("steps", "n_samples", "mode", "spin", "in_jit")
+
+
+class TestBMChainJit:
+    def test_plain_jit_without_in_jit_raises(self, key: jax.Array) -> None:
+        # ``BM_chain``'s default validation calls ``checkify.checkify(...)``
+        # then eagerly ``.throw()``s -- that needs a concrete answer to "did
+        # a check fail?", which isn't available while still being traced by
+        # an *outer* ``jit``. This is exactly why ``in_jit=True`` exists;
+        # see the tests below.
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        jitted = jax.jit(BM_chain, static_argnames=("steps", "n_samples", "mode", "spin"))
+        with pytest.raises(ValueError, match="checkify"):
+            jitted(key, jnp.ones(n), W, b, steps=1, n_samples=5, mode="HIST")
+
+    def test_jit_matches_eager_last(self, key: jax.Array) -> None:
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.ones(n)
+        jitted = jax.jit(BM_chain, static_argnames=_STATIC_ARGNAMES)
+        x_eager = BM_chain(key, x0, W, b, n_samples=None, steps=5, in_jit=False)
+        x_jit = jitted(key, x0, W, b, n_samples=None, steps=5, in_jit=True)
+        np.testing.assert_array_equal(np.asarray(x_eager), np.asarray(x_jit))
+
+    def test_jit_matches_eager_hist(self, key: jax.Array) -> None:
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.ones(n)
+        jitted = jax.jit(BM_chain, static_argnames=_STATIC_ARGNAMES)
+        x_e, s_e = BM_chain(key, x0, W, b, steps=1, n_samples=10, mode="HIST", in_jit=False)
+        x_j, s_j = jitted(key, x0, W, b, steps=1, n_samples=10, mode="HIST", in_jit=True)
+        np.testing.assert_array_equal(np.asarray(x_e), np.asarray(x_j))
+        np.testing.assert_array_equal(np.asarray(s_e), np.asarray(s_j))
+
+    def test_jit_matches_eager_mean(self, key: jax.Array) -> None:
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.ones(n)
+        jitted = jax.jit(BM_chain, static_argnames=_STATIC_ARGNAMES)
+        x_e, m_e = BM_chain(key, x0, W, b, steps=1, n_samples=10, mode="MEAN", in_jit=False)
+        x_j, m_j = jitted(key, x0, W, b, steps=1, n_samples=10, mode="MEAN", in_jit=True)
+        np.testing.assert_array_equal(np.asarray(x_e), np.asarray(x_j))
+        np.testing.assert_array_equal(np.asarray(m_e), np.asarray(m_j))
+
+    def test_jit_matches_eager_corr(self, key: jax.Array) -> None:
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.ones(n)
+        jitted = jax.jit(BM_chain, static_argnames=_STATIC_ARGNAMES)
+        x_e, c_e = BM_chain(key, x0, W, b, steps=1, n_samples=10, mode="CORR", in_jit=False)
+        x_j, c_j = jitted(key, x0, W, b, steps=1, n_samples=10, mode="CORR", in_jit=True)
+        np.testing.assert_array_equal(np.asarray(x_e), np.asarray(x_j))
+        np.testing.assert_array_equal(np.asarray(c_e), np.asarray(c_j))
+
+    def test_jit_respects_clamp(self, key: jax.Array) -> None:
+        # ``clamp`` is passed as a normal (dynamic) traced argument here --
+        # no need to mark it static.
+        n = 5
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.where(jnp.arange(n) % 2 == 0, 1.0, -1.0)
+        clamp = jnp.array([0, 2, 4], dtype=jnp.int32)
+        jitted = jax.jit(BM_chain, static_argnames=_STATIC_ARGNAMES)
+        _, samples = jitted(
+            key, x0, W, b, steps=1, n_samples=20, mode="HIST", clamp=clamp, in_jit=True
+        )
+        np.testing.assert_array_equal(
+            np.asarray(samples[:, clamp]),
+            np.broadcast_to(np.asarray(x0[clamp]), (20, clamp.shape[0])),
+        )
+
+
+class TestBMChainVmap:
+    def test_vmap_over_key_matches_sequential_calls(self, key: jax.Array) -> None:
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.ones(n)
+        keys = jax.random.split(key, 6)
+
+        def one(k):
+            return BM_chain(k, x0, W, b, steps=1, n_samples=8, mode="HIST", in_jit=True)
+
+        batched_x, batched_samples = jax.vmap(one)(keys)
+        assert batched_x.shape == (6, n)
+        assert batched_samples.shape == (6, 8, n)
+        for i in range(6):
+            x_i, s_i = BM_chain(keys[i], x0, W, b, steps=1, n_samples=8, mode="HIST")
+            np.testing.assert_array_equal(np.asarray(batched_x[i]), np.asarray(x_i))
+            np.testing.assert_array_equal(np.asarray(batched_samples[i]), np.asarray(s_i))
+
+    def test_vmap_over_key_and_x0(self, key: jax.Array) -> None:
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        keys = jax.random.split(key, 5)
+        x0s = jnp.where(jax.random.bernoulli(key, shape=(5, n)), 1.0, -1.0)
+
+        def one(k, x0):
+            return BM_chain(k, x0, W, b, steps=1, n_samples=6, mode="MEAN", in_jit=True)
+
+        batched_x, batched_mean = jax.vmap(one)(keys, x0s)
+        assert batched_x.shape == (5, n)
+        assert batched_mean.shape == (5, n)
+        for i in range(5):
+            x_i, m_i = BM_chain(keys[i], x0s[i], W, b, steps=1, n_samples=6, mode="MEAN")
+            np.testing.assert_array_equal(np.asarray(batched_x[i]), np.asarray(x_i))
+            np.testing.assert_array_equal(np.asarray(batched_mean[i]), np.asarray(m_i))
+
+    def test_vmap_over_key_x0_weights_bias(self, key: jax.Array) -> None:
+        n = 4
+        n_models = 3
+        keys = jax.random.split(key, n_models)
+        Ws = jnp.stack([_random_symmetric_weights(k, n) for k in keys])
+        bs = jnp.zeros((n_models, n))
+        x0s = jnp.ones((n_models, n))
+
+        def one(k, x0, W, b):
+            return BM_chain(k, x0, W, b, steps=1, n_samples=5, mode="CORR", in_jit=True)
+
+        batched_x, batched_corr = jax.vmap(one)(keys, x0s, Ws, bs)
+        assert batched_x.shape == (n_models, n)
+        assert batched_corr.shape == (n_models, n, n)
+        for i in range(n_models):
+            x_i, c_i = BM_chain(keys[i], x0s[i], Ws[i], bs[i], steps=1, n_samples=5, mode="CORR")
+            np.testing.assert_array_equal(np.asarray(batched_x[i]), np.asarray(x_i))
+            np.testing.assert_array_equal(np.asarray(batched_corr[i]), np.asarray(c_i))
+
+    def test_jit_of_vmap(self, key: jax.Array) -> None:
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.ones(n)
+        keys = jax.random.split(key, 4)
+
+        def one(k):
+            return BM_chain(k, x0, W, b, steps=1, n_samples=5, mode="HIST", in_jit=True)
+
+        jitted_vmapped = jax.jit(jax.vmap(one))
+        batched_x, batched_samples = jitted_vmapped(keys)
+        assert batched_x.shape == (4, n)
+        assert batched_samples.shape == (4, 5, n)
+
+    def test_bare_vmap_does_not_need_in_jit(self, key: jax.Array) -> None:
+        """Unlike ``jax.jit``, a bare ``jax.vmap`` (no enclosing ``jit``)
+        executes eagerly on concrete, batched values, so the default
+        ``in_jit=False`` validation works -- and still catches bad input.
+        """
+        n = 4
+        W = _random_symmetric_weights(key, n)
+        b = jnp.zeros(n)
+        x0 = jnp.ones(n)
+        keys = jax.random.split(key, 4)
+
+        def one(k):
+            return BM_chain(k, x0, W, b, steps=1, n_samples=5, mode="HIST")
+
+        batched_x, batched_samples = jax.vmap(one)(keys)
+        assert batched_x.shape == (4, n)
+        assert batched_samples.shape == (4, 5, n)
+
+        bad_x0 = jnp.full((n,), 5.0)
+
+        def bad(k):
+            return BM_chain(k, bad_x0, W, b, steps=1, n_samples=5, mode="HIST")
+
+        with pytest.raises(Exception, match="only contain values"):
+            jax.vmap(bad)(keys)
+
+
+class TestRBMChainJit:
+    def test_plain_jit_without_in_jit_raises(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        jitted = jax.jit(RBM_chain, static_argnames=("steps", "n_samples", "mode", "spin"))
+        with pytest.raises(ValueError, match="checkify"):
+            jitted(
+                key, jnp.ones(n_v), jnp.ones(n_h), W, b_v, b_h,
+                steps=1, n_samples=5, mode="HIST",
+            )
+
+    def test_jit_matches_eager_last(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0, x_h0 = jnp.ones(n_v), jnp.ones(n_h)
+        jitted = jax.jit(RBM_chain, static_argnames=_STATIC_ARGNAMES)
+        v_e, h_e = RBM_chain(key, x_v0, x_h0, W, b_v, b_h, n_samples=None, steps=5, in_jit=False)
+        v_j, h_j = jitted(key, x_v0, x_h0, W, b_v, b_h, n_samples=None, steps=5, in_jit=True)
+        np.testing.assert_array_equal(np.asarray(v_e), np.asarray(v_j))
+        np.testing.assert_array_equal(np.asarray(h_e), np.asarray(h_j))
+
+    def test_jit_matches_eager_hist(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0, x_h0 = jnp.ones(n_v), jnp.ones(n_h)
+        jitted = jax.jit(RBM_chain, static_argnames=_STATIC_ARGNAMES)
+        (v_e, h_e), (vs_e, hs_e) = RBM_chain(
+            key, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=10, mode="HIST", in_jit=False
+        )
+        (v_j, h_j), (vs_j, hs_j) = jitted(
+            key, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=10, mode="HIST", in_jit=True
+        )
+        np.testing.assert_array_equal(np.asarray(v_e), np.asarray(v_j))
+        np.testing.assert_array_equal(np.asarray(h_e), np.asarray(h_j))
+        np.testing.assert_array_equal(np.asarray(vs_e), np.asarray(vs_j))
+        np.testing.assert_array_equal(np.asarray(hs_e), np.asarray(hs_j))
+
+    def test_jit_matches_eager_mean(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0, x_h0 = jnp.ones(n_v), jnp.ones(n_h)
+        jitted = jax.jit(RBM_chain, static_argnames=_STATIC_ARGNAMES)
+        (v_e, h_e), (vm_e, hm_e) = RBM_chain(
+            key, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=10, mode="MEAN", in_jit=False
+        )
+        (v_j, h_j), (vm_j, hm_j) = jitted(
+            key, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=10, mode="MEAN", in_jit=True
+        )
+        np.testing.assert_array_equal(np.asarray(v_e), np.asarray(v_j))
+        np.testing.assert_array_equal(np.asarray(h_e), np.asarray(h_j))
+        np.testing.assert_array_equal(np.asarray(vm_e), np.asarray(vm_j))
+        np.testing.assert_array_equal(np.asarray(hm_e), np.asarray(hm_j))
+
+    def test_jit_matches_eager_corr(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0, x_h0 = jnp.ones(n_v), jnp.ones(n_h)
+        jitted = jax.jit(RBM_chain, static_argnames=_STATIC_ARGNAMES)
+        (v_e, h_e), c_e = RBM_chain(
+            key, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=10, mode="CORR", in_jit=False
+        )
+        (v_j, h_j), c_j = jitted(
+            key, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=10, mode="CORR", in_jit=True
+        )
+        np.testing.assert_array_equal(np.asarray(v_e), np.asarray(v_j))
+        np.testing.assert_array_equal(np.asarray(h_e), np.asarray(h_j))
+        np.testing.assert_array_equal(np.asarray(c_e), np.asarray(c_j))
+
+    def test_jit_respects_clamp(self, key: jax.Array) -> None:
+        n_v, n_h = 5, 3
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0 = jnp.where(jnp.arange(n_v) % 2 == 0, 1.0, -1.0)
+        x_h0 = jnp.ones(n_h)
+        clamp = jnp.array([0, 2, 4], dtype=jnp.int32)
+        jitted = jax.jit(RBM_chain, static_argnames=_STATIC_ARGNAMES)
+        (_, _), (vs, _hs) = jitted(
+            key, x_v0, x_h0, W, b_v, b_h,
+            steps=1, n_samples=20, mode="HIST", clamp=clamp, in_jit=True,
+        )
+        np.testing.assert_array_equal(
+            np.asarray(vs[:, clamp]),
+            np.broadcast_to(np.asarray(x_v0[clamp]), (20, clamp.shape[0])),
+        )
+
+
+class TestRBMChainVmap:
+    def test_vmap_over_key_matches_sequential_calls(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0, x_h0 = jnp.ones(n_v), jnp.ones(n_h)
+        keys = jax.random.split(key, 6)
+
+        def one(k):
+            return RBM_chain(
+                k, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=8, mode="HIST", in_jit=True
+            )
+
+        (batched_v, batched_h), (batched_vs, batched_hs) = jax.vmap(one)(keys)
+        assert batched_v.shape == (6, n_v)
+        assert batched_h.shape == (6, n_h)
+        assert batched_vs.shape == (6, 8, n_v)
+        assert batched_hs.shape == (6, 8, n_h)
+        for i in range(6):
+            (v_i, h_i), (vs_i, hs_i) = RBM_chain(
+                keys[i], x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=8, mode="HIST"
+            )
+            np.testing.assert_array_equal(np.asarray(batched_v[i]), np.asarray(v_i))
+            np.testing.assert_array_equal(np.asarray(batched_h[i]), np.asarray(h_i))
+            np.testing.assert_array_equal(np.asarray(batched_vs[i]), np.asarray(vs_i))
+            np.testing.assert_array_equal(np.asarray(batched_hs[i]), np.asarray(hs_i))
+
+    def test_vmap_over_key_and_x0(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        keys = jax.random.split(key, 5)
+        x_v0s = jnp.where(jax.random.bernoulli(key, shape=(5, n_v)), 1.0, -1.0)
+        x_h0s = jnp.where(jax.random.bernoulli(key, shape=(5, n_h)), 1.0, -1.0)
+
+        def one(k, x_v0, x_h0):
+            return RBM_chain(
+                k, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=6, mode="MEAN", in_jit=True
+            )
+
+        (batched_v, batched_h), (batched_vm, batched_hm) = jax.vmap(one)(keys, x_v0s, x_h0s)
+        assert batched_v.shape == (5, n_v)
+        assert batched_vm.shape == (5, n_v)
+        assert batched_hm.shape == (5, n_h)
+        for i in range(5):
+            (v_i, h_i), (vm_i, hm_i) = RBM_chain(
+                keys[i], x_v0s[i], x_h0s[i], W, b_v, b_h, steps=1, n_samples=6, mode="MEAN"
+            )
+            np.testing.assert_array_equal(np.asarray(batched_v[i]), np.asarray(v_i))
+            np.testing.assert_array_equal(np.asarray(batched_h[i]), np.asarray(h_i))
+            np.testing.assert_array_equal(np.asarray(batched_vm[i]), np.asarray(vm_i))
+            np.testing.assert_array_equal(np.asarray(batched_hm[i]), np.asarray(hm_i))
+
+    def test_vmap_over_key_x0_weights_bias(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        n_models = 3
+        keys = jax.random.split(key, n_models)
+        Ws = jnp.stack([jax.random.normal(k, (n_v, n_h)) for k in keys])
+        bvs = jnp.zeros((n_models, n_v))
+        bhs = jnp.zeros((n_models, n_h))
+        x_v0s = jnp.ones((n_models, n_v))
+        x_h0s = jnp.ones((n_models, n_h))
+
+        def one(k, x_v0, x_h0, W, b_v, b_h):
+            return RBM_chain(
+                k, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=5, mode="CORR", in_jit=True
+            )
+
+        (batched_v, batched_h), batched_corr = jax.vmap(one)(
+            keys, x_v0s, x_h0s, Ws, bvs, bhs
+        )
+        assert batched_v.shape == (n_models, n_v)
+        assert batched_corr.shape == (n_models, n_v, n_h)
+        for i in range(n_models):
+            (v_i, h_i), c_i = RBM_chain(
+                keys[i], x_v0s[i], x_h0s[i], Ws[i], bvs[i], bhs[i],
+                steps=1, n_samples=5, mode="CORR",
+            )
+            np.testing.assert_array_equal(np.asarray(batched_v[i]), np.asarray(v_i))
+            np.testing.assert_array_equal(np.asarray(batched_h[i]), np.asarray(h_i))
+            np.testing.assert_array_equal(np.asarray(batched_corr[i]), np.asarray(c_i))
+
+    def test_jit_of_vmap(self, key: jax.Array) -> None:
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0, x_h0 = jnp.ones(n_v), jnp.ones(n_h)
+        keys = jax.random.split(key, 4)
+
+        def one(k):
+            return RBM_chain(
+                k, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=5, mode="HIST", in_jit=True
+            )
+
+        jitted_vmapped = jax.jit(jax.vmap(one))
+        (batched_v, batched_h), (batched_vs, batched_hs) = jitted_vmapped(keys)
+        assert batched_v.shape == (4, n_v)
+        assert batched_h.shape == (4, n_h)
+        assert batched_vs.shape == (4, 5, n_v)
+        assert batched_hs.shape == (4, 5, n_h)
+
+    def test_bare_vmap_does_not_need_in_jit(self, key: jax.Array) -> None:
+        """Unlike ``jax.jit``, a bare ``jax.vmap`` (no enclosing ``jit``)
+        executes eagerly on concrete, batched values, so the default
+        ``in_jit=False`` validation works -- and still catches bad input.
+        """
+        n_v, n_h = 3, 2
+        W = jax.random.normal(key, (n_v, n_h))
+        b_v, b_h = jnp.zeros(n_v), jnp.zeros(n_h)
+        x_v0, x_h0 = jnp.ones(n_v), jnp.ones(n_h)
+        keys = jax.random.split(key, 4)
+
+        def one(k):
+            return RBM_chain(k, x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=5, mode="HIST")
+
+        (batched_v, batched_h), (batched_vs, batched_hs) = jax.vmap(one)(keys)
+        assert batched_v.shape == (4, n_v)
+        assert batched_vs.shape == (4, 5, n_v)
+
+        bad_x_v0 = jnp.full((n_v,), 5.0)
+
+        def bad(k):
+            return RBM_chain(k, bad_x_v0, x_h0, W, b_v, b_h, steps=1, n_samples=5, mode="HIST")
+
+        with pytest.raises(Exception, match="only contain values"):
+            jax.vmap(bad)(keys)

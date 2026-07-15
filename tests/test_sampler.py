@@ -1,10 +1,4 @@
-"""Tests for :mod:`jax_bm._sampler` (the low-level conditional sampler builders).
-
-These drive the builders (``_BM_sampler`` / ``_RBM_sampler``) and their
-single-step update helpers (``_bm_update`` / ``_rbm_update_visible`` /
-``_rbm_update_hidden``) directly, rather than going through ``sample.py``'s
-``BM_chain`` / ``RBM_chain`` (see ``test_sample.py`` for that level). The
-shared ``key`` fixture is provided by ``tests/conftest.py``.
+"""Tests for `jaxbm._sampler` (the low-level conditional sampler builders).
 """
 
 from __future__ import annotations
@@ -13,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jax_bm._sampler import (
+from jaxbm._sampler import (
     _BM_sampler,
     _bm_update,
     _RBM_sampler,
@@ -40,7 +34,7 @@ def _vmap_trials(fn, key, n_trials):
 
 
 # =========================================================================== #
-# _bm_update: one single-site Gibbs update                                   #
+# _bm_update: one single-unit Gibbs update                                   #
 # =========================================================================== #
 
 
@@ -123,7 +117,7 @@ class TestBmUpdate:
 
 
 # =========================================================================== #
-# _BM_sampler: single-site Gibbs sampler builder                             #
+# _BM_sampler: single-unit Gibbs sampler builder                             #
 # =========================================================================== #
 
 

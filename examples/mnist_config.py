@@ -1,4 +1,0 @@
-ALL_UNITS = slice(0, 150)
-DIGIT_UNITS = slice(0, 10)
-IMAGE_UNITS = slice(10, 110)
-HIDDEN_UNITS = slice(110, 150)
