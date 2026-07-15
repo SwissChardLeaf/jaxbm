@@ -1,6 +1,6 @@
 # jaxbm
 
-[![CI](https://github.com/SwissChardLeaf/jax-bm/actions/workflows/ci.yml/badge.svg)](https://github.com/SwissChardLeaf/jax-bm/actions/workflows/ci.yml)
+[![CI](https://github.com/SwissChardLeaf/jaxbm/actions/workflows/ci.yml/badge.svg)](https://github.com/SwissChardLeaf/jaxbm/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/jaxbm.svg)](https://pypi.org/project/jaxbm/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 

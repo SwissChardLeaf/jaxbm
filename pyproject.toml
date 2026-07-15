@@ -40,8 +40,8 @@ viz = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SwissChardLeaf/jax-bm"
-Issues = "https://github.com/SwissChardLeaf/jax-bm/issues"
+Homepage = "https://github.com/SwissChardLeaf/jaxbm"
+Issues = "https://github.com/SwissChardLeaf/jaxbm/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["jaxbm"]
