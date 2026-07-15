@@ -31,12 +31,13 @@ W = jnp.zeros((n, n))   # symmetric (n, n) coupling matrix, zero diagonal
 b = jnp.zeros(n)        # bias vector, or None for no bias
 
 x0 = jnp.ones(n)
-final_x, samples = sample_chain(key, x0, W, b, steps=1, n_samples=100)
+final_x, samples = sample_chain(key, x0, W, b, steps=1, n_samples=100, mode="HIST")
 ```
 
 See `sample_chain`'s docstring (`src/jax_bm/sample.py`) for the full set of
-behaviors, including burn-in-only calls (`n_samples=None`), running averages
-(`avg=True`), and correlation matrices (`corr=True`).
+behaviors, including burn-in-only calls (`mode="LAST"`, the default, with
+`n_samples=None`), running averages (`mode="MEAN"`), and mean correlation
+matrices (`mode="CORR"`).
 
 ## Project layout
 
@@ -46,8 +47,8 @@ src/jax_bm/
   sample.py      # sample_chain(): the public entry point, validation, and
                  # restricted (bipartite) detection
   _sampler.py    # conditional sampler builders (single-site Gibbs / block-Gibbs)
-  _scan.py       # jax.lax.scan-based driver (stacks a trajectory)
-  _for_loop.py   # jax.lax.fori_loop-based driver (burn-in / running average)
+  _loop.py       # drivers: jax.lax.fori_loop (advance / running mean / running
+                 # correlation) and jax.lax.scan (stacked trajectory)
 archive/         # older helpers (statistics, plotting, misc utils), kept for
                  # reference but not part of the installable package
 examples/        # worked examples (e.g. MNIST wake-sleep training), not part

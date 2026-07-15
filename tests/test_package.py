@@ -9,7 +9,7 @@ These exercise everything that a user gets from ``import jax_bm``:
 - the re-exported public API actually works through the top-level namespace
   (smoke test).
 
-As of this writing the only top-level export is ``sample_chain`` (see
+As of this writing the only top-level export is ``BM_chain`` (see
 ``jax_bm/sample.py``).
 """
 
@@ -54,7 +54,7 @@ class TestPackageMetadata:
         # name is removed; new names are fine.
         import jax_bm
 
-        expected = {"sample_chain"}
+        expected = {"BM_chain"}
         assert expected.issubset(set(jax_bm.__all__))
 
 
@@ -70,15 +70,15 @@ class TestPackageReExports:
         missing = [name for name in jax_bm.__all__ if not hasattr(jax_bm, name)]
         assert missing == [], f"names listed in __all__ but missing from module: {missing}"
 
-    def test_sample_chain_is_same_object_as_in_sample_module(self) -> None:
+    def test_bm_chain_is_same_object_as_in_sample_module(self) -> None:
         import jax_bm
         import jax_bm.sample as sample_module
 
-        assert jax_bm.sample_chain is sample_module.sample_chain
+        assert jax_bm.BM_chain is sample_module.BM_chain
 
     def test_from_import_works(self) -> None:
         # ``from jax_bm import ...`` must work for every name in __all__.
-        from jax_bm import sample_chain  # noqa: F401
+        from jax_bm import BM_chain  # noqa: F401
 
 
 # =========================================================================== #
@@ -93,7 +93,7 @@ class TestSubmodules:
 
     def test_sample_submodule_importable(self) -> None:
         mod = importlib.import_module("jax_bm.sample")
-        assert hasattr(mod, "sample_chain")
+        assert hasattr(mod, "BM_chain")
 
     def test_sampler_submodule_importable(self) -> None:
         mod = importlib.import_module("jax_bm._sampler")
@@ -113,17 +113,17 @@ class TestSubmodules:
 
 class TestPublicApiSmoke:
     """End-to-end exercise of the symbol re-exported at the top level. If
-    this breaks, ``import jax_bm; jax_bm.sample_chain(...)`` is also broken."""
+    this breaks, ``import jax_bm; jax_bm.BM_chain(...)`` is also broken."""
 
-    def test_sample_chain_through_top_level(self) -> None:
+    def test_bm_chain_through_top_level(self) -> None:
         import jax_bm
 
         key = jax.random.PRNGKey(0)
         n = 4
         W = jnp.zeros((n, n))
         b = jnp.zeros(n)
-        final_x, samples = jax_bm.sample_chain(
-            key, jnp.ones(n), W, b, steps=2, n_samples=3,
+        final_x, samples = jax_bm.BM_chain(
+            key, jnp.ones(n), W, b, steps=2, n_samples=3, mode="HIST",
         )
         assert final_x.shape == (n,)
         assert samples.shape == (3, n)
