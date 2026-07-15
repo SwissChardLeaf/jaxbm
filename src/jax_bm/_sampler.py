@@ -54,6 +54,8 @@ def _BM_sampler(weights, bias, sampler_steps, spin, clamp):
     ``clamp`` is ``None`` or a 1-D integer array of unit indices to hold
     fixed: those units are simply never picked to be resampled, so they
     keep whatever value they had in the state passed to ``sampler(key, x)``.
+    If ``clamp`` covers every unit, the returned ``sampler`` is the identity
+    (there is nothing left to resample).
 
     Returned ``sampler(key, x)`` resamples one (non-clamped) unit at a time,
     ``sampler_steps`` times, from its conditional distribution given the
@@ -61,6 +63,17 @@ def _BM_sampler(weights, bias, sampler_steps, spin, clamp):
     ``{0, 1}``.
     """
     n = weights.shape[0]
+    if clamp is not None and clamp.shape[0] >= n:
+        # Every unit is clamped, so none is ever eligible to be resampled --
+        # avoid dividing by a zero `free_mask.sum()` below (which would hand
+        # `jax.random.choice` a NaN distribution) and just make the chain a
+        # no-op. (``clamp.shape[0]`` and ``n`` are static under ``jit``, so
+        # this ``if`` is a plain Python branch, not a traced one.)
+        def sampler(key, x):
+            return key, x
+
+        return sampler
+
     if clamp is None:
         unit_p = jnp.full((n,), 1.0 / n)
     else:

@@ -9,7 +9,6 @@ updated to call that (or ``jax_bm.sampling.sample_chain``) once it lands.
 from __future__ import annotations
 
 import jax.numpy as jnp
-
 from mnist_config import ALL_UNITS, HIDDEN_UNITS
 
 

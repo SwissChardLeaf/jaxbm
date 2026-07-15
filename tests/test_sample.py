@@ -12,14 +12,13 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-
 from jax.experimental import checkify
 
 from jax_bm.sample import (
-    _bm_validate,
-    _rbm_validate,
     BM_chain,
     RBM_chain,
+    _bm_validate,
+    _rbm_validate,
 )
 
 
