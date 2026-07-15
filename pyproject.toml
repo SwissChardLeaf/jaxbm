@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jaxbm"
-version = "0.0.1"
+version = "0.1.0"
 description = "JAX-based simulations of Boltzmann machines."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Inhoo Lee" }]
+authors = [{ name = "Inhoo Lee", email = "research22426@gmail.com" }]
 keywords = ["jax", "boltzmann-machine", "rbm", "physics", "machine-learning"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -40,8 +40,8 @@ viz = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/inhoolee/jax-bm"
-Issues = "https://github.com/inhoolee/jax-bm/issues"
+Homepage = "https://github.com/SwissChardLeaf/jax-bm"
+Issues = "https://github.com/SwissChardLeaf/jax-bm/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["jaxbm"]

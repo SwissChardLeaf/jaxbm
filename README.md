@@ -1,5 +1,9 @@
 # jaxbm
 
+[![CI](https://github.com/SwissChardLeaf/jax-bm/actions/workflows/ci.yml/badge.svg)](https://github.com/SwissChardLeaf/jax-bm/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/jaxbm.svg)](https://pypi.org/project/jaxbm/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 JAX-based simulations of Boltzmann machines.
 
 `jaxbm` aims to provide simple, composable, `jit`- and `vmap`-friendly building blocks
@@ -7,7 +11,11 @@ for simulating and training Boltzmann machines on top of JAX.
 
 ## Installation
 
-From a clone of this repository:
+```bash
+pip install jaxbm
+```
+
+Or from a clone of this repository:
 
 ```bash
 pip install .

@@ -29,6 +29,9 @@ coverage.xml
 .vscode/
 .DS_Store
 
+# WSL alternate-data-stream artifacts from files copied off a Windows drive
+*:Zone.Identifier
+
 # Jupyter
 .ipynb_checkpoints/
 
